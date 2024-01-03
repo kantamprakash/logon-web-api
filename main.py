@@ -5,6 +5,7 @@ import numpy as np
 import os
 import uuid  # For generating unique filenames
 import soundfile as sf  # You may need to install this library using: pip install soundfile
+from skimage.metrics import structural_similarity as ssim
 import scipy.spatial.distance as distance
 
 app = Flask(__name__)
@@ -17,10 +18,11 @@ palm_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'palm.xml')
 # Get the current working directory
 current_directory = os.getcwd()
 
-# Define the relative path to the reference images and audio file directories
+# Define the relative path to the reference images, palms, audio, and fingerprints directories
 relative_path_to_reference_images = 'images'
 relative_path_to_reference_palms = 'palms'
 relative_path_to_reference_audio = 'audio'
+relative_path_to_reference_fingerprints = 'fingerprints'
 
 # Load all reference images from the specified directory
 def load_reference_images(directory):
@@ -58,6 +60,18 @@ def load_reference_audio(directory):
 
 reference_audio_directory = os.path.join(current_directory, relative_path_to_reference_audio)
 reference_audio_files = load_reference_audio(reference_audio_directory)
+
+# Load all reference fingerprint images from the specified directory
+def load_reference_fingerprints(directory):
+    reference_fingerprints = []
+    for filename in os.listdir(directory):
+        if filename.endswith(('.jpg', '.jpeg', '.png')):  # Add other image file extensions as needed
+            fingerprint_path = os.path.join(directory, filename)
+            reference_fingerprints.append(cv2.imread(fingerprint_path))
+    return reference_fingerprints
+
+reference_fingerprints_directory = os.path.join(current_directory, relative_path_to_reference_fingerprints)
+reference_fingerprints = load_reference_fingerprints(reference_fingerprints_directory)
 
 # Function to perform face detection and image comparison with multiple reference images
 def detect_faces_and_compare(image):
@@ -112,6 +126,7 @@ def detect_and_compare_palm(input_image):
                     return True
 
     return False
+
 # Function to perform palm detection
 def detect_palm(image):
     # Convert the image to grayscale
@@ -137,6 +152,27 @@ def compare_voice(recorded_audio):
 
         # Return True if the similarity is above the threshold, indicating a match
         if similarity > threshold:
+            return True
+
+    return False
+
+# Function to perform fingerprint detection and comparison
+def detect_and_compare_fingerprint(input_fingerprint):
+    # Placeholder logic for fingerprint comparison
+    # Replace this with your actual fingerprint matching algorithm or library
+
+    # Example: Placeholder logic using Structural Similarity Index (SSI)
+    max_ssim = 0.8  # Adjust this threshold based on your data
+    for reference_fingerprint in reference_fingerprints:
+        # Convert images to grayscale
+        input_gray = cv2.cvtColor(input_fingerprint, cv2.COLOR_BGR2GRAY)
+        reference_gray = cv2.cvtColor(reference_fingerprint, cv2.COLOR_BGR2GRAY)
+
+        # Compute Structural Similarity Index (SSI)
+        ssi_index, _ = ssim(input_gray, reference_gray, full=True)
+
+        # If SSI is above the threshold, consider it a match
+        if ssi_index > max_ssim:
             return True
 
     return False
@@ -222,6 +258,36 @@ def compare_voice_api():
     os.remove(audio_path)
 
     return jsonify({'result_voice': result_voice_as_int})
+
+
+# API endpoint for fingerprint comparison with multiple reference fingerprints
+@app.route('/fingerprintId', methods=['POST'])
+def compare_fingerprint_api():
+    if 'fingerprintId' not in request.files:
+        return jsonify({'error': 'No fingerprint image provided'}), 400
+
+    fingerprint_file = request.files['fingerprintId']
+
+    # Generate a unique filename for the received fingerprint image
+    filename = str(uuid.uuid4()) + '.jpg'
+
+    # Save the received fingerprint image to the current directory
+    fingerprint_path = os.path.join(current_directory, filename)
+    fingerprint_file.save(fingerprint_path)
+
+    # Read the saved fingerprint image from the file
+    input_fingerprint = cv2.imread(fingerprint_path)
+
+    # Perform fingerprint detection and comparison
+    result_fingerprint = detect_and_compare_fingerprint(input_fingerprint)
+
+    # Convert boolean result to int before jsonify
+    result_fingerprint_as_int = int(result_fingerprint)
+
+    # Remove the saved fingerprint image file (optional)
+    os.remove(fingerprint_path)
+
+    return jsonify({'result_fingerprint': result_fingerprint_as_int})
 
 
 if __name__ == '__main__':
