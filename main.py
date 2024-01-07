@@ -20,7 +20,6 @@ current_directory = os.getcwd()
 
 # Define the relative path to the reference images, palms, audio, and fingerprints directories
 relative_path_to_reference_images = 'images'
-relative_path_to_reference_palms = 'palms'
 relative_path_to_reference_audio = 'audio'
 relative_path_to_reference_fingerprints = 'fingerprints'
 
@@ -36,17 +35,6 @@ def load_reference_images(directory):
 reference_images_directory = os.path.join(current_directory, relative_path_to_reference_images)
 reference_images = load_reference_images(reference_images_directory)
 
-# Load all reference palm images from the specified directory
-def load_reference_palm_images(directory):
-    reference_palm_images = []
-    for filename in os.listdir(directory):
-        if filename.endswith(('.jpg', '.jpeg', '.png')):  # Add other image file extensions as needed
-            image_path = os.path.join(directory, filename)
-            reference_palm_images.append(cv2.imread(image_path))
-    return reference_palm_images
-
-reference_palm_images_directory = os.path.join(current_directory, relative_path_to_reference_palms)
-reference_palm_images = load_reference_palm_images(reference_palm_images_directory)
 
 # Load all reference audio files from the specified directory
 def load_reference_audio(directory):
@@ -94,51 +82,42 @@ def detect_faces_and_compare(image):
 
     return False
 
-# Function to perform palm detection and image comparison using pixel-wise MSE
-def detect_and_compare_palm(input_image):
-    # Convert the image to grayscale
-    gray = cv2.cvtColor(input_image, cv2.COLOR_BGR2GRAY)
-
-    # Perform palm detection
-    input_palms = palm_cascade.detectMultiScale(gray, scaleFactor=1.5, minNeighbors=1)
-
-    # Perform palm image comparison logic
-    if len(input_palms) > 0:
-        for input_palm in input_palms:
-            # Extract the region of interest (ROI) for the detected palm in the input image
-            input_palm_roi = input_image[input_palm[1]:input_palm[1] + input_palm[3],
-                                         input_palm[0]:input_palm[0] + input_palm[2]]
-
-            # Resize both images to the same dimensions for pixel-wise comparison
-            for reference_palm_image in reference_palm_images:
-                reference_palm_image_resized = cv2.resize(reference_palm_image,
-                                                          (input_palm_roi.shape[1], input_palm_roi.shape[0]))
-
-                # Compare the input palm image with the reference palm image using pixel-wise MSE
-                mse = np.sum((input_palm_roi.astype("float") - reference_palm_image_resized.astype("float")) ** 2)
-                mse /= float(input_palm_roi.shape[0] * input_palm_roi.shape[1])
-
-                # Define a threshold for MSE (you may need to adjust this based on your data)
-                threshold = 5.0  # Adjust this value as needed
-
-                # Return True if the MSE is below the threshold, indicating a match
-                if mse < threshold:
-                    return True
-
-    return False
-
-# Function to perform palm detection
-def detect_palm(image):
+# Function to perform face detection 
+def detect_faces(image):
     # Convert the image to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Perform palm detection
-    palms = palm_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=10)
+    # Perform face detection
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
 
-    return len(palms) > 0
+    # Compare the input image with all reference images
+    if len(faces) > 0:
+        return True  
+
+    return False
+
 
 # Function to compare voice recordings with multiple reference audio files
 def compare_voice(recorded_audio):
+    for reference_audio in reference_audio_files:
+        # Ensure that the arrays are 1-D
+        reference_audio_1d = reference_audio.flatten()
+        recorded_audio_1d = recorded_audio.flatten()
+
+        # Calculate the cosine similarity between the reference and recorded audio
+        similarity = 1 - distance.cosine(reference_audio_1d, recorded_audio_1d)
+
+        # Define a threshold for similarity (you may need to adjust this based on your data)
+        threshold = 0.9
+
+        # Return True if the similarity is above the threshold, indicating a match
+        if similarity > threshold:
+            return True
+
+    return False
+
+# Function to compare voice recordings with multiple reference audio files
+def detect_voice(recorded_audio):
     for reference_audio in reference_audio_files:
         # Ensure that the arrays are 1-D
         reference_audio_1d = reference_audio.flatten()
@@ -177,34 +156,28 @@ def detect_and_compare_fingerprint(input_fingerprint):
 
     return False
 
-# API endpoint for palm detection and comparison with multiple reference palm images
-@app.route('/palmId', methods=['POST'])
-def detect_and_compare_palm_api():
-    if 'palmId' not in request.files:
-        return jsonify({'error': 'No image provided'}), 400
 
-    image_file = request.files['palmId']
+# Function to perform fingerprint detection
+def detect_fingerprint(input_fingerprint):
+    # Placeholder logic for fingerprint comparison
+    # Replace this with your actual fingerprint matching algorithm or library
 
-    # Generate a unique filename for the received image
-    filename = str(uuid.uuid4()) + '.jpg'
+    # Example: Placeholder logic using Structural Similarity Index (SSI)
+    max_ssim = 0.8  # Adjust this threshold based on your data
+    for reference_fingerprint in reference_fingerprints:
+        # Convert images to grayscale
+        input_gray = cv2.cvtColor(input_fingerprint, cv2.COLOR_BGR2GRAY)
+        reference_gray = cv2.cvtColor(reference_fingerprint, cv2.COLOR_BGR2GRAY)
 
-    # Save the received image to the current directory
-    image_path = os.path.join(current_directory, filename)
-    image_file.save(image_path)
+        # Compute Structural Similarity Index (SSI)
+        ssi_index, _ = ssim(input_gray, reference_gray, full=True)
 
-    # Read the saved image from the file
-    input_image = cv2.imread(image_path)
+        # If SSI is above the threshold, consider it a match
+        if ssi_index > max_ssim:
+            return True
 
-    # Perform palm detection and image comparison
-    result_palm = detect_palm(input_image)
+    return False
 
-    # Convert boolean result to int before jsonify
-    result_palm_as_int = int(result_palm)
-
-    # Remove the saved image file (optional)
-    os.remove(image_path)
-
-    return jsonify({'result_palm': result_palm_as_int})
 
 
 # API endpoint for face detection and image comparison with multiple reference images
@@ -228,6 +201,29 @@ def detect_and_compare_faces_api():
         os.remove(image_path)
 
     return jsonify({'result_faces': results_faces})
+
+# API endpoint for face detection 
+@app.route('/detectFace', methods=['POST'])
+def detect_faces_api():
+    if 'regfaceId' not in request.files:
+        return jsonify({'error': 'No image provided'}), 400
+
+    image_files = request.files.getlist('regfaceId')
+
+    results_faces = []
+    for image_file in image_files:
+        filename = str(uuid.uuid4()) + '.jpg'
+        image_path = os.path.join(reference_images_directory, filename)
+        image_file.save(image_path)
+
+        image = cv2.imread(image_path)
+        result_faces = detect_faces(image)
+        os.remove(image_path)
+        results_faces.append(int(result_faces))
+
+
+    return jsonify({'result_faces': results_faces})
+
 
 
 # API endpoint for voice comparison with multiple reference audio files
@@ -260,6 +256,37 @@ def compare_voice_api():
     return jsonify({'result_voice': result_voice_as_int})
 
 
+# API endpoint for voice comparison with multiple reference audio files
+@app.route('/detectVoice', methods=['POST'])
+def detect_voice_api():
+    if 'regvoiceId' not in request.files:
+        return jsonify({'error': 'No audio file provided'}), 400
+
+    audio_file = request.files['regvoiceId']
+
+    # Generate a unique filename for the received audio
+    filename = str(uuid.uuid4()) + '.wav'
+
+    # Save the received audio to the current directory
+    audio_path = os.path.join(reference_audio_directory, filename)
+    audio_file.save(audio_path)
+
+    # Read the saved audio from the file
+    recorded_audio, _ = sf.read(audio_path)
+
+    # Perform voice comparison
+    result_voice = detect_voice(recorded_audio)
+
+    # Convert boolean result to int before jsonify
+    result_voice_as_int = int(result_voice)
+
+    # Remove the saved audio file (optional)
+    os.remove(audio_path)
+
+    return jsonify({'result_voice': result_voice_as_int})
+
+
+
 # API endpoint for fingerprint comparison with multiple reference fingerprints
 @app.route('/fingerprintId', methods=['POST'])
 def compare_fingerprint_api():
@@ -288,6 +315,37 @@ def compare_fingerprint_api():
     os.remove(fingerprint_path)
 
     return jsonify({'result_fingerprint': result_fingerprint_as_int})
+
+
+# API endpoint for fingerprint comparison with multiple reference fingerprints
+@app.route('/detectFingerprint', methods=['POST'])
+def detect_fingerprint_api():
+    if 'regfingerprintId' not in request.files:
+        return jsonify({'error': 'No fingerprint image provided'}), 400
+
+    fingerprint_file = request.files['regfingerprintId']
+
+    # Generate a unique filename for the received fingerprint image
+    filename = str(uuid.uuid4()) + '.jpg'
+
+    # Save the received fingerprint image to the current directory
+    fingerprint_path = os.path.join(current_directory, filename)
+    fingerprint_file.save(fingerprint_path)
+
+    # Read the saved fingerprint image from the file
+    input_fingerprint = cv2.imread(fingerprint_path)
+
+    # Perform fingerprint detection and comparison
+    result_fingerprint = detect_fingerprint(input_fingerprint)
+
+    # Convert boolean result to int before jsonify
+    result_fingerprint_as_int = int(result_fingerprint)
+
+    # Remove the saved fingerprint image file (optional)
+    os.remove(fingerprint_path)
+
+    return jsonify({'result_fingerprint': result_fingerprint_as_int})
+
 
 
 if __name__ == '__main__':
