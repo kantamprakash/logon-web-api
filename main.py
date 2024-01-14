@@ -205,10 +205,10 @@ def detect_and_compare_faces_api():
 # API endpoint for face detection 
 @app.route('/detectFace', methods=['POST'])
 def detect_faces_api():
-    if 'regfaceId' not in request.files:
+    if 'detectFace' not in request.files:
         return jsonify({'error': 'No image provided'}), 400
 
-    image_files = request.files.getlist('regfaceId')
+    image_files = request.files.getlist('detectFace')
 
     results_faces = []
     for image_file in image_files:
@@ -259,10 +259,10 @@ def compare_voice_api():
 # API endpoint for voice comparison with multiple reference audio files
 @app.route('/detectVoice', methods=['POST'])
 def detect_voice_api():
-    if 'regvoiceId' not in request.files:
+    if 'detectVoice' not in request.files:
         return jsonify({'error': 'No audio file provided'}), 400
 
-    audio_file = request.files['regvoiceId']
+    audio_file = request.files['detectVoice']
 
     # Generate a unique filename for the received audio
     filename = str(uuid.uuid4()) + '.wav'
@@ -320,10 +320,10 @@ def compare_fingerprint_api():
 # API endpoint for fingerprint comparison with multiple reference fingerprints
 @app.route('/detectFingerprint', methods=['POST'])
 def detect_fingerprint_api():
-    if 'regfingerprintId' not in request.files:
+    if 'detectFingerprint' not in request.files:
         return jsonify({'error': 'No fingerprint image provided'}), 400
 
-    fingerprint_file = request.files['regfingerprintId']
+    fingerprint_file = request.files['detectFingerprint']
 
     # Generate a unique filename for the received fingerprint image
     filename = str(uuid.uuid4()) + '.jpg'
